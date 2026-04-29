@@ -1,0 +1,22 @@
+# Ignore files for Health Tracker
+
+# Dependencies
+vendor/
+node_modules/
+
+# Environment & Secrets
+.env
+*.key
+*.sqlite
+backend/database/health_tracker.db
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Build artifacts
+dist/
+build/

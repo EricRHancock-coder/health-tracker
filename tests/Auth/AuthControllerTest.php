@@ -90,6 +90,45 @@ class AuthControllerTest extends TestCase
         $this->assertStringContainsString('mock_jwt_token', $response->getBody());
     }
 
+    public function testLoginSuccessCapturesIpAddress(): void
+    {
+        $capturedLog = null;
+        $userData = ['email' => 'user@test.com', 'password' => 'correct_password'];
+        $user = $this->makeUserBean([
+            'id' => 1,
+            'email' => 'user@test.com',
+            'password_hash' => password_hash('correct_password', PASSWORD_BCRYPT),
+            'role' => 'admin',
+            'full_name' => 'Test User',
+            'is_disabled' => 0,
+            'is_verified' => 1,
+        ]);
+
+        $this->userRepositoryMock->expects($this->once())
+            ->method('findByEmail')
+            ->willReturn($user);
+
+        $this->userRepositoryMock->method('update');
+
+        $this->auditRepositoryMock->expects($this->once())
+            ->method('save')
+            ->willReturnCallback(function ($log) use (&$capturedLog) {
+                $capturedLog = $log;
+                return 1;
+            });
+
+        $this->jwtHandlerMock->method('generate')->willReturn('mock_token');
+
+        // Set a mock IP for testing
+        $_SERVER['REMOTE_ADDR'] = '192.168.1.100';
+
+        $this->authController->login($userData);
+
+        $this->assertNotNull($capturedLog);
+        $this->assertEquals('192.168.1.100', $capturedLog->ip_address);
+        $this->assertEquals('LOGIN', $capturedLog->action);
+    }
+
     public function testLoginInvalidEmailReturnsGenericError(): void
     {
         $userData = ['email' => 'nonexistent@test.com', 'password' => 'any_password'];
@@ -104,6 +143,31 @@ class AuthControllerTest extends TestCase
 
         $this->assertEquals(401, $response->getStatusCode());
         $this->assertStringContainsString('Invalid email or password', $response->getBody());
+    }
+
+    public function testLoginFailureCapturesIpAddress(): void
+    {
+        $capturedLog = null;
+        $userData = ['email' => 'nonexistent@test.com', 'password' => 'any_password'];
+
+        $this->userRepositoryMock->method('findByEmail')->willReturn(null);
+
+        $this->auditRepositoryMock->expects($this->once())
+            ->method('save')
+            ->willReturnCallback(function ($log) use (&$capturedLog) {
+                $capturedLog = $log;
+                return 1;
+            });
+
+        // Set a mock IP for testing
+        $_SERVER['REMOTE_ADDR'] = '10.0.0.50';
+
+        $this->authController->login($userData);
+
+        $this->assertNotNull($capturedLog);
+        $this->assertEquals('10.0.0.50', $capturedLog->ip_address);
+        $this->assertEquals('FAILED_LOGIN', $capturedLog->action);
+        $this->assertStringContainsString('User not found', $capturedLog->old_values);
     }
 
     public function testLoginWrongPasswordReturnsGenericError(): void

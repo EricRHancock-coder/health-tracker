@@ -6,7 +6,7 @@ Alzheimer's Care Application backend.
 ## Architecture
 - Language: PHP 8.2+
 - Pattern: Front Controller / API-driven
-- Database: PDO-based
+- Database: RedBeanPHP ORM over SQLite
 
 ## Authentication & Security
 ### JWT Implementation

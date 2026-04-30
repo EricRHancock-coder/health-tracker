@@ -1,7 +1,7 @@
 # Project Todo List
 
 ## Backend
-- [ ] **ORM Migration**: Migrate from PDO to RedBeanPHP (High)
+- [x] **ORM Migration**: Migrate from PDO to RedBeanPHP (High)
 - [ ] **Residents**: Implement Residents Table (Medium)
 - [ ] **Medications**: Implement Medications Table (Medium)
 - [ ] **Daily Records**: Implement Daily Records Table (Medium)

@@ -4,72 +4,89 @@ namespace Tests\Audit;
 
 use PHPUnit\Framework\TestCase;
 use App\Repositories\AuditLogRepository;
-use App\Models\AuditLog;
-use App\Utils\Database;
+use RedBeanPHP\R;
 
 class AuditLogRepositoryTest extends TestCase
 {
-    private $dbMock;
     private AuditLogRepository $repository;
 
     protected function setUp(): void
     {
-        $this->dbMock = $this->createMock(Database::class);
-        $this->repository = new AuditLogRepository($this->dbMock);
+        if (!R::testConnection()) {
+            R::setup('sqlite::memory:');
+        }
+
+        R::exec("CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            action TEXT NOT NULL,
+            table_name TEXT,
+            record_id INTEGER,
+            old_values TEXT,
+            new_values TEXT,
+            ip_address TEXT,
+            timestamp DATETIME NOT NULL
+        )");
+
+        $this->repository = new AuditLogRepository();
     }
 
-    public function testSavePersistsCorrectData()
+    protected function tearDown(): void
     {
-        $log = new AuditLog([
-            'user_id' => 1,
-            'action' => 'CREATE',
-            'table_name' => 'users',
-            'record_id' => 10,
-            'old_values' => null,
-            'new_values' => json_encode(['name' => 'John']),
-            'ip_address' => '127.0.0.1'
-        ]);
-
-        $this->dbMock->expects($this->once())
-            ->method('execute')
-            ->with(
-                $this->stringContains('INSERT INTO audit_log'),
-                $this->callback(function($params) use ($log) {
-                    return $params[0] === 1 && 
-                           $params[1] === 'CREATE' && 
-                           $params[4] === null &&
-                           $params[5] === json_encode(['name' => 'John']);
-                })
-            );
-
-        $this->repository->save($log);
+        R::nuke();
     }
 
-    public function testGetRecentReturnsAuditLogObjects()
+    public function testSavePersistsAuditLogBean(): void
     {
-        $mockData = [
-            [
-                'id' => 1,
-                'user_id' => 1,
-                'action' => 'LOGIN',
-                'table_name' => null,
-                'record_id' => null,
-                'old_values' => null,
-                'new_values' => null,
-                'ip_address' => '127.0.0.1',
-                'timestamp' => '2026-04-27 10:00:00'
-            ]
-        ];
+        $log = R::dispense('audit_log');
+        $log->user_id = 1;
+        $log->action = 'CREATE';
+        $log->table_name = 'users';
+        $log->record_id = 10;
+        $log->new_values = json_encode(['name' => 'John']);
+        $log->ip_address = '127.0.0.1';
+        $log->timestamp = '2026-04-30 10:00:00';
 
-        $this->dbMock->expects($this->once())
-            ->method('query')
-            ->willReturn($mockData);
+        $id = $this->repository->save($log);
 
-        $results = $this->repository->getRecent(1);
+        $this->assertGreaterThan(0, $id);
 
-        $this->assertCount(1, $results);
-        $this->assertInstanceOf(AuditLog::class, $results[0]);
-        $this->assertEquals(1, $results[0]->id);
-        $this->assertEquals('LOGIN', $results[0]->action);
+        $stored = R::load('audit_log', $id);
+        $this->assertEquals('CREATE', $stored->action);
+        $this->assertEquals(1, (int) $stored->user_id);
+        $this->assertEquals(10, (int) $stored->record_id);
+        $this->assertEquals(json_encode(['name' => 'John']), $stored->new_values);
+    }
+
+    public function testGetRecentReturnsBeansNewestFirst(): void
+    {
+        $first = R::dispense('audit_log');
+        $first->action = 'LOGIN';
+        $first->user_id = 1;
+        $first->timestamp = '2026-04-29 09:00:00';
+        R::store($first);
+
+        $second = R::dispense('audit_log');
+        $second->action = 'FAILED_LOGIN';
+        $second->timestamp = '2026-04-30 10:00:00';
+        R::store($second);
+
+        $results = $this->repository->getRecent(10);
+
+        $this->assertCount(2, $results);
+        $this->assertEquals('FAILED_LOGIN', $results[array_key_first($results)]->action);
+    }
+
+    public function testGetRecentRespectsLimit(): void
+    {
+        for ($i = 0; $i < 5; $i++) {
+            $log = R::dispense('audit_log');
+            $log->action = 'LOGIN';
+            $log->timestamp = sprintf('2026-04-%02d 10:00:00', 25 + $i);
+            R::store($log);
+        }
+
+        $results = $this->repository->getRecent(2);
+        $this->assertCount(2, $results);
     }
 }

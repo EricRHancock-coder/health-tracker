@@ -1,14 +1,14 @@
 <?php
 namespace App\Utils;
 
-use App\Models\User;
 use Exception;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
+use RedBeanPHP\OODBBean;
 
 /**
  * JwtHandler
- * 
+ *
  * Handles generation and verification of JSON Web Tokens using firebase/php-jwt.
  */
 class JwtHandler
@@ -21,26 +21,23 @@ class JwtHandler
     }
 
     /**
-     * Generates a JWT for a specific user.
+     * Generate a JWT for a user bean.
      */
-    public function generate(User $user): string
+    public function generate(OODBBean $user): string
     {
         $payload = [
             'iss' => $this->config['issuer'],
             'iat' => time(),
             'exp' => time() + $this->config['ttl'],
-            'sub' => $user->id,
-            'role' => $user->role
+            'sub' => (int) $user->id,
+            'role' => (string) $user->role,
         ];
 
         return JWT::encode($payload, $this->config['secret'], $this->config['algorithm']);
     }
 
     /**
-     * Verifies a JWT and returns the decoded payload.
-     * 
-     * @param string $token The JWT string.
-     * @return array|null The decoded payload, or null if invalid.
+     * Verify a JWT and return the decoded payload, or null if invalid.
      */
     public function verifyAndDecode(string $token): ?array
     {

@@ -10,7 +10,7 @@
 |-----------|--------|---------|
 | **UI/UX Design** | ✅ Completed | Dashboard layouts, navigation, login screen, reports portal mockups defined |
 | **Database Schema** | ✅ Completed | All tables defined: users, residents, medications, daily_records, medication_records, audit_log, token_blacklist |
-| **Backend (ORM)** | ⏳ Pending | Migrating from PDO to RedBeanPHP |
+| **Backend (ORM)** | ✅ Completed | Migrated from PDO to RedBeanPHP (User, AuditLog, TokenBlacklist) |
 | **User Model** | ✅ Completed | Auto-logging, soft-delete, authentication with failure tracking |
 | **AuditLog Model** | ✅ Completed | CREATE/UPDATE/DELETE/LOGIN/FAILED_LOGIN actions, JSON old/new values |
 | **AuthMiddleware** | ✅ Completed | Validates JWT and account status |

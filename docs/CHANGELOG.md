@@ -4,7 +4,23 @@ All notable changes to the Health Tracker project.
 
 ## [Unreleased]
 
+### Changed
+#### 2026-04-30
+- Finished RedBeanPHP migration. `UserRepository`, `AuditLogRepository`, and `BlacklistRepository` now operate on RedBean beans via `R::*` instead of the bespoke PDO `Database` utility.
+- `AuthController` and `JwtHandler` accept `OODBBean` user instances; `AuthController::login` now rejects missing credentials with the same generic 401.
+- `config/database.php` is idempotent so tests that pre-wire an in-memory connection are not clobbered when production code requires the file.
+
+### Removed
+#### 2026-04-30
+- Deleted the orphan `App\Models\User` DTO (duplicate of FUSE `Model_Users`).
+- Deleted the `App\Models\AuditLog` DTO (audit log entries are now plain `audit_log` beans).
+- Deleted `App\Utils\Database` (no remaining callers after the RedBean migration).
+- Deleted `backend/archive/verify_db.php` (one-shot smoke script no longer needed).
+
 ### Fixed
+#### 2026-04-30
+- `UserRepository::findByEmail`/`findById` no longer return `null` for every real user. The previous `instanceof Model_Users` check was always false because `R::findOne` returns `OODBBean`, not the FUSE model class.
+
 #### 2026-04-27
 - Fixed `ResponseTest.php` error where object was accessed as an array.
 - Fixed `AuthControllerTest.php` deprecation warning regarding `setAccessible()`.

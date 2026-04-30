@@ -7,10 +7,11 @@
 ## Backend
 
 ### RedBeanPHP Migration
-- [ ] Install RedBeanPHP via Composer
-- [ ] Initialize RedBeanPHP in `backend/config/database.php`
-- [ ] Refactor Models to use RedBeanPHP beans
-- [ ] Update Repositories to use RedBeanPHP
+- [x] Install RedBeanPHP via Composer
+- [x] Initialize RedBeanPHP in `backend/config/database.php`
+- [x] Refactor Models to use RedBeanPHP beans (Model_Users FUSE, audit_log + token_blacklist as raw beans)
+- [x] Update Repositories to use RedBeanPHP (User, AuditLog, Blacklist)
+- [x] Remove legacy PDO `Database` utility
 
 ### Authentication Implementation (High Priority)
 - [x] `config/database.php`

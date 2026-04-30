@@ -4,32 +4,35 @@ namespace Tests\Repositories;
 
 use PHPUnit\Framework\TestCase;
 use App\Repositories\BlacklistRepository;
-use App\Utils\Database;
+use RedBeanPHP\R;
 
 class BlacklistRepositoryTest extends TestCase
 {
-    private Database $db;
     private BlacklistRepository $repository;
 
     protected function setUp(): void
     {
-        // Initialize an in-memory database for isolation
-        $this->db = Database::getInstance();
-        $this->db->setTestDsn('sqlite::memory:');
+        if (!R::testConnection()) {
+            R::setup('sqlite::memory:');
+        }
 
-        // Set up the table structure
-        $this->db->execute("CREATE TABLE token_blacklist (
+        R::exec("CREATE TABLE IF NOT EXISTS token_blacklist (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             token_hash TEXT UNIQUE NOT NULL,
             expires_at DATETIME NOT NULL
         )");
-        $this->db->execute("CREATE INDEX idx_token_blacklist_expires_at ON token_blacklist(expires_at)");
-        $this->db->execute("CREATE INDEX idx_token_blacklist_hash ON token_blacklist(token_hash)");
+        R::exec('CREATE INDEX IF NOT EXISTS idx_token_blacklist_expires_at ON token_blacklist(expires_at)');
+        R::exec('CREATE INDEX IF NOT EXISTS idx_token_blacklist_hash ON token_blacklist(token_hash)');
 
-        $this->repository = new BlacklistRepository($this->db);
+        $this->repository = new BlacklistRepository();
     }
 
-    public function testAddAndVerifyBlacklist()
+    protected function tearDown(): void
+    {
+        R::nuke();
+    }
+
+    public function testAddAndVerifyBlacklist(): void
     {
         $hash = hash('sha256', 'mock_jwt_token');
         $expiry = date('Y-m-d H:i:s', strtotime('+1 hour'));
@@ -40,34 +43,31 @@ class BlacklistRepositoryTest extends TestCase
         $this->assertFalse($this->repository->isBlacklisted('non_existent_hash'));
     }
 
-    public function testDuplicateHashThrowsError()
+    public function testDuplicateHashThrowsError(): void
     {
         $hash = hash('sha256', 'duplicate_token');
         $expiry = date('Y-m-d H:i:s', strtotime('+1 hour'));
 
         $this->repository->add($hash, $expiry);
 
-        // Expecting a PDOException due to the UNIQUE constraint on token_hash
+        // The UNIQUE constraint on token_hash should bubble up as a PDOException
+        // through RedBeanPHP.
         $this->expectException(\PDOException::class);
         $this->repository->add($hash, $expiry);
     }
 
-    public function testCleanupRemovesExpiredTokens()
+    public function testCleanupRemovesExpiredTokens(): void
     {
         $oldExpiry = date('Y-m-d H:i:s', strtotime('-1 hour'));
         $newExpiry = date('Y-m-d H:i:s', strtotime('+1 hour'));
 
-        // Add one expired and one valid token
         $this->repository->add(hash('sha256', 'expired_token'), $oldExpiry);
         $this->repository->add(hash('sha256', 'valid_token'), $newExpiry);
 
-        // Ensure the valid one is there initially
         $this->assertTrue($this->repository->isBlacklisted(hash('sha256', 'valid_token')));
 
-        // Run cleanup
         $removedCount = $this->repository->cleanup();
 
-        // Verify
         $this->assertEquals(1, $removedCount);
         $this->assertFalse($this->repository->isBlacklisted(hash('sha256', 'expired_token')));
         $this->assertTrue($this->repository->isBlacklisted(hash('sha256', 'valid_token')));

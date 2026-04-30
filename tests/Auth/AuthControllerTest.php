@@ -5,131 +5,168 @@ namespace Tests\Auth;
 use PHPUnit\Framework\TestCase;
 use App\Controllers\AuthController;
 use App\Repositories\UserRepository;
-use App\Models\User;
-use App\Models\AuditLog;
 use App\Repositories\AuditLogRepository;
 use App\Utils\JwtHandler;
-use App\Utils\Response;
+use RedBeanPHP\OODBBean;
+use RedBeanPHP\R;
 
 class AuthControllerTest extends TestCase
 {
-  private $userRepositoryMock;
-  private $auditRepositoryMock;
-  private $jwtHandlerMock;
-  private AuthController $authController;
+    private $userRepositoryMock;
+    private $auditRepositoryMock;
+    private $jwtHandlerMock;
+    private AuthController $authController;
 
-  protected function setUp(): void
-  {
-    $this->userRepositoryMock = $this->createMock(UserRepository::class);
-    $this->auditRepositoryMock = $this->createMock(AuditLogRepository::class);
-    $this->jwtHandlerMock = $this->createMock(JwtHandler::class);
+    protected function setUp(): void
+    {
+        if (!R::testConnection()) {
+            R::setup('sqlite::memory:');
+        }
 
-    $this->authController = new AuthController($this->userRepositoryMock, $this->auditRepositoryMock);
+        $this->userRepositoryMock = $this->createMock(UserRepository::class);
+        $this->auditRepositoryMock = $this->createMock(AuditLogRepository::class);
+        $this->jwtHandlerMock = $this->createMock(JwtHandler::class);
 
-    // Use reflection to inject the mocked JwtHandler since it's instantiated in the constructor
-    $reflection = new \ReflectionClass($this->authController);
-    $property = $reflection->getProperty('jwtHandler');
-    $property->setValue($this->authController, $this->jwtHandlerMock);
-  }
+        $this->authController = new AuthController(
+            $this->userRepositoryMock,
+            $this->auditRepositoryMock
+        );
 
-  public function testLoginSuccess()
-  {
-    $userData = ['email' => 'user@test.com', 'password' => 'correct_password'];
-    $user = new User([
-      'id' => 1,
-      'email' => 'user@test.com',
-      'password_hash' => password_hash('correct_password', PASSWORD_BCRYPT),
-      'role' => 'admin',
-      'full_name' => 'Test User',
-      'is_diabled' => 0,
-      'is_verified' => 1
-    ]);
+        // The controller instantiates its own JwtHandler in the constructor; swap
+        // in the mock via reflection so we can assert against it.
+        $reflection = new \ReflectionClass($this->authController);
+        $property = $reflection->getProperty('jwtHandler');
+        $property->setValue($this->authController, $this->jwtHandlerMock);
+    }
 
-    $this->userRepositoryMock->expects($this->once())
-      ->method('findByEmail')
-      ->with('user@test.com')
-      ->willReturn($user);
+    protected function tearDown(): void
+    {
+        R::nuke();
+    }
 
-    $this->userRepositoryMock->expects($this->once())
-      ->method('update')
-      ->with($this->callback(fn($u) => $u->last_login_at !== null));
+    private function makeUserBean(array $data): OODBBean
+    {
+        $user = R::dispense('users');
+        foreach ($data as $key => $value) {
+            $user->$key = $value;
+        }
+        return $user;
+    }
 
-    $this->auditRepositoryMock->expects($this->once())
-      ->method('save')
-      ->with($this->isInstanceOf(AuditLog::class));
+    public function testLoginSuccess(): void
+    {
+        $userData = ['email' => 'user@test.com', 'password' => 'correct_password'];
+        $user = $this->makeUserBean([
+            'id' => 1,
+            'email' => 'user@test.com',
+            'password_hash' => password_hash('correct_password', PASSWORD_BCRYPT),
+            'role' => 'admin',
+            'full_name' => 'Test User',
+            'is_disabled' => 0,
+            'is_verified' => 1,
+        ]);
 
-    $this->jwtHandlerMock->expects($this->once())
-      ->method('generate')
-      ->with($user)
-      ->willReturn('mock_jwt_token');
+        $this->userRepositoryMock->expects($this->once())
+            ->method('findByEmail')
+            ->with('user@test.com')
+            ->willReturn($user);
 
-    $response = $this->authController->login($userData);
+        $this->userRepositoryMock->expects($this->once())
+            ->method('update')
+            ->with($this->callback(fn($u) => $u->last_login_at !== null));
 
-    $this->assertEquals(200, $response->getStatusCode());
-    $this->assertStringContainsString('mock_jwt_token', $response->getBody());
-  }
+        $this->auditRepositoryMock->expects($this->once())
+            ->method('save')
+            ->with($this->isInstanceOf(OODBBean::class));
 
-  public function testLoginInvalidEmailReturnsGenericError()
-  {
-    $userData = ['email' => 'nonexistent@test.com', 'password' => 'any_password'];
+        $this->jwtHandlerMock->expects($this->once())
+            ->method('generate')
+            ->with($user)
+            ->willReturn('mock_jwt_token');
 
-    $this->userRepositoryMock->method('findByEmail')->willReturn(null);
+        $response = $this->authController->login($userData);
 
-    $this->auditRepositoryMock->expects($this->once())
-      ->method('save')
-      ->with($this->callback(fn($log) => $log->action === 'FAILED_LOGIN'));
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertStringContainsString('mock_jwt_token', $response->getBody());
+    }
 
-    $response = $this->authController->login($userData);
+    public function testLoginInvalidEmailReturnsGenericError(): void
+    {
+        $userData = ['email' => 'nonexistent@test.com', 'password' => 'any_password'];
 
-    $this->assertEquals(401, $response->getStatusCode());
-    $this->assertStringContainsString('Invalid email or password', $response->getBody());
-  }
+        $this->userRepositoryMock->method('findByEmail')->willReturn(null);
 
-  public function testLoginWrongPasswordReturnsGenericError()
-  {
-    $userData = ['email' => 'user@test.com', 'password' => 'wrong_password'];
-    $user = new User([
-      'email' => 'user@test.com',
-      'password_hash' => password_hash('correct_password', PASSWORD_BCRYPT)
-    ]);
+        $this->auditRepositoryMock->expects($this->once())
+            ->method('save')
+            ->with($this->callback(fn($log) => $log->action === 'FAILED_LOGIN'));
 
-    $this->userRepositoryMock->method('findByEmail')->willReturn($user);
+        $response = $this->authController->login($userData);
 
-    $this->auditRepositoryMock->expects($this->once())
-      ->method('save')
-      ->with($this->callback(fn($log) => $log->action === 'FAILED_LOGIN'));
+        $this->assertEquals(401, $response->getStatusCode());
+        $this->assertStringContainsString('Invalid email or password', $response->getBody());
+    }
 
-    $response = $this->authController->login($userData);
+    public function testLoginWrongPasswordReturnsGenericError(): void
+    {
+        $userData = ['email' => 'user@test.com', 'password' => 'wrong_password'];
+        $user = $this->makeUserBean([
+            'email' => 'user@test.com',
+            'password_hash' => password_hash('correct_password', PASSWORD_BCRYPT),
+            'is_verified' => 1,
+            'is_disabled' => 0,
+        ]);
 
-    $this->assertEquals(401, $response->getStatusCode());
-    $this->assertStringContainsString('Invalid email or password', $response->getBody());
-  }
+        $this->userRepositoryMock->method('findByEmail')->willReturn($user);
 
-  public function testLoginDisabledUserReturnsGenericError()
-  {
-    $userData = ['email' => 'disabled@test.com', 'password' => 'password'];
-    $user = new User([
-      'email' => 'disabled@test.com',
-      'password_hash' => password_hash('password', PASSWORD_BCRYPT),
-    ]);
+        $this->auditRepositoryMock->expects($this->once())
+            ->method('save')
+            ->with($this->callback(fn($log) => $log->action === 'FAILED_LOGIN'));
 
-    $this->userRepositoryMock->method('findByEmail')->willReturn($user);
+        $response = $this->authController->login($userData);
 
-    $this->auditRepositoryMock->expects($this->once())
-      ->method('save')
-      ->with($this->callback(fn($log) => $log->action === 'FAILED_LOGIN'));
+        $this->assertEquals(401, $response->getStatusCode());
+        $this->assertStringContainsString('Invalid email or password', $response->getBody());
+    }
 
-    $response = $this->authController->login($userData);
+    public function testLoginDisabledUserReturnsGenericError(): void
+    {
+        $userData = ['email' => 'disabled@test.com', 'password' => 'password'];
+        $user = $this->makeUserBean([
+            'email' => 'disabled@test.com',
+            'password_hash' => password_hash('password', PASSWORD_BCRYPT),
+            'is_verified' => 0,
+            'is_disabled' => 1,
+        ]);
 
-    $this->assertEquals(401, $response->getStatusCode());
-    $this->assertStringContainsString('Invalid email or password', $response->getBody());
-  }
+        $this->userRepositoryMock->method('findByEmail')->willReturn($user);
 
-  public function testLogout()
-  {
-    $response = $this->authController->logout();
+        $this->auditRepositoryMock->expects($this->once())
+            ->method('save')
+            ->with($this->callback(fn($log) => $log->action === 'FAILED_LOGIN'));
 
-    $this->assertEquals(200, $response->getStatusCode());
-    $this->assertStringContainsString('DISCARD_TOKEN', $response->getBody());
-  }
+        $response = $this->authController->login($userData);
+
+        $this->assertEquals(401, $response->getStatusCode());
+        $this->assertStringContainsString('Invalid email or password', $response->getBody());
+    }
+
+    public function testLoginMissingCredentialsReturnsGenericError(): void
+    {
+        $this->auditRepositoryMock->expects($this->once())
+            ->method('save')
+            ->with($this->callback(fn($log) => $log->action === 'FAILED_LOGIN'));
+
+        $response = $this->authController->login([]);
+
+        $this->assertEquals(401, $response->getStatusCode());
+        $this->assertStringContainsString('Invalid email or password', $response->getBody());
+    }
+
+    public function testLogout(): void
+    {
+        $response = $this->authController->logout();
+
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertStringContainsString('DISCARD_TOKEN', $response->getBody());
+    }
 }

@@ -15,7 +15,7 @@ class JwtHandlerTest extends TestCase
     {
         $this->authConfig = [
             'jwt' => [
-                'secret' => 'test_secret',
+                'secret' => 'a_very_long_and_secure_test_secret_key_that_is_long_enough',
                 'algorithm' => 'HS256',
                 'ttl' => 3600,
                 'issuer' => 'test-issuer',
@@ -98,7 +98,7 @@ class JwtHandlerTest extends TestCase
         // Create a short-lived config for testing expiration
         $expiredConfig = [
             'jwt' => [
-                'secret' => 'test_secret',
+                'secret' => 'a_very_long_and_secure_test_secret_key_that_is_long_enough',
                 'algorithm' => 'HS256',
                 'ttl' => -10, // Expired 10 seconds ago
                 'issuer' => 'test-issuer',

@@ -15,7 +15,7 @@ class JwtHandlerTest extends TestCase
     {
         $this->authConfig = [
             'jwt' => [
-                'secret' => 'a_very_long_and_secure_test_secret_key_that_is_long_enough',
+                'secret' => 'a_very_long_and_secure_test_secret_key_that_is_at_least_64_chars_long_for_hs512',
                 'algorithm' => 'HS256',
                 'ttl' => 3600,
                 'issuer' => 'test-issuer',
@@ -98,7 +98,7 @@ class JwtHandlerTest extends TestCase
         // Create a short-lived config for testing expiration
         $expiredConfig = [
             'jwt' => [
-                'secret' => 'a_very_long_and_secure_test_secret_key_that_is_long_enough',
+                'secret' => 'a_very_long_and_secure_test_secret_key_that_is_at_least_64_chars_long_for_hs512',
                 'algorithm' => 'HS256',
                 'ttl' => -10, // Expired 10 seconds ago
                 'issuer' => 'test-issuer',
@@ -110,5 +110,45 @@ class JwtHandlerTest extends TestCase
         $token = $expiredHandler->generate($user);
 
         $this->assertNull($expiredHandler->verifyAndDecode($token));
+    }
+
+    public function testVerifyAndDecodeWithAlgorithmMismatch()
+    {
+        $user = new User(['id' => 1, 'email' => 'test@example.com', 'role' => 'admin']);
+        
+        // Generate a token with HS512
+        $otherConfig = [
+            'jwt' => [
+                'secret' => 'a_very_long_and_secure_test_secret_key_that_is_at_least_64_chars_long_for_hs512',
+                'algorithm' => 'HS512',
+                'ttl' => 3600,
+                'issuer' => 'test-issuer',
+            ],
+        ];
+        $otherHandler = new JwtHandler($otherConfig);
+        $token = $otherHandler->generate($user);
+
+        // Attempt to decode with the main handler (which is HS256)
+        $this->assertNull($this->jwtHandler->verifyAndDecode($token));
+    }
+
+    public function testVerifyAndDecodeWithInvalidKey()
+    {
+        $user = new User(['id' => 1, 'email' => 'test@example.com', 'role' => 'admin']);
+        $token = $this->jwtHandler->generate($user);
+
+        // Create a handler with a different (but valid length) key
+        $wrongKeyConfig = [
+            'jwt' => [
+                'secret' => 'another_very_long_and_secure_test_secret_key_that_is_long_enough',
+                'algorithm' => 'HS256',
+                'ttl' => 3600,
+                'issuer' => 'test-issuer',
+            ],
+        ];
+        $wrongKeyHandler = new JwtHandler($wrongKeyConfig);
+
+        // Attempt to decode the original token with the wrong key
+        $this->assertNull($wrongKeyHandler->verifyAndDecode($token));
     }
 }

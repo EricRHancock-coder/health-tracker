@@ -26,7 +26,6 @@ class UserTest extends TestCase {
 
     public function testInitializationAndGetters() {
         $data = [
-            'id' => 1,
             'email' => 'test@example.com',
             'password_hash' => 'hashed_password',
             'role' => 'admin',
@@ -35,13 +34,13 @@ class UserTest extends TestCase {
             'is_disabled' => 0,
             'last_login_at' => '2026-04-24 10:00:00'
         ];
-        
+
         $bean = $this->createBean($data);
-        R::store($bean);
+        $id = (int) R::store($bean);
 
-        $userBean = R::load('users', 1);
+        $userBean = R::load('users', $id);
 
-        $this->assertEquals(1, $userBean->id);
+        $this->assertEquals($id, (int) $userBean->id);
         $this->assertEquals('test@example.com', $userBean->email);
         $this->assertEquals('admin', $userBean->role);
         $this->assertEquals('Test User', $userBean->full_name);

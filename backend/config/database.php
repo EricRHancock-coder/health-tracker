@@ -22,4 +22,7 @@ if (!\RedBeanPHP\R::testConnection()) {
     \RedBeanPHP\R::setup('sqlite:' . $config['sqlite']['path']);
 }
 
+// Allow snake_case bean types like `audit_log` and `token_blacklist`.
+\RedBeanPHP\Util\DispenseHelper::setEnforceNamingPolicy(false);
+
 return $config;

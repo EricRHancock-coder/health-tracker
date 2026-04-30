@@ -50,9 +50,8 @@ class BlacklistRepositoryTest extends TestCase
 
         $this->repository->add($hash, $expiry);
 
-        // The UNIQUE constraint on token_hash should bubble up as a PDOException
-        // through RedBeanPHP.
-        $this->expectException(\PDOException::class);
+        // RedBeanPHP wraps PDOExceptions in RedException\SQL.
+        $this->expectException(\RedBeanPHP\RedException\SQL::class);
         $this->repository->add($hash, $expiry);
     }
 

@@ -252,4 +252,85 @@ class AuthControllerTest extends TestCase
         $this->assertEquals(200, $response->getStatusCode());
         $this->assertStringContainsString('DISCARD_TOKEN', $response->getBody());
     }
+
+    public function testLogoutAddsTokenToBlacklist(): void
+    {
+        $token = 'valid.jwt.token';
+        $payload = ['sub' => 1, 'exp' => time() + 3600];
+
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $token;
+
+        $this->jwtHandlerMock->method('verifyAndDecode')
+            ->with($token)
+            ->willReturn($payload);
+
+        $this->blacklistRepositoryMock->expects($this->once())
+            ->method('add')
+            ->with(
+                hash('sha256', $token),
+                $this->stringContains(gmdate('Y-m-d H:i:s', $payload['exp']))
+            );
+
+        $this->blacklistRepositoryMock->expects($this->once())
+            ->method('cleanup');
+
+        $this->auditRepositoryMock->method('save');
+
+        $this->authController->logout();
+    }
+
+    public function testLogoutLogsAuditEvent(): void
+    {
+        $token = 'valid.jwt.token';
+        $payload = ['sub' => 1, 'exp' => time() + 3600];
+        $capturedLog = null;
+
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $token;
+        $_SERVER['REMOTE_ADDR'] = '192.168.1.50';
+
+        $this->jwtHandlerMock->method('verifyAndDecode')
+            ->willReturn($payload);
+
+        $this->blacklistRepositoryMock->method('add');
+        $this->blacklistRepositoryMock->method('cleanup');
+
+        $this->auditRepositoryMock->expects($this->once())
+            ->method('save')
+            ->willReturnCallback(function ($log) use (&$capturedLog) {
+                $capturedLog = $log;
+                return 1;
+            });
+
+        $this->authController->logout();
+
+        $this->assertNotNull($capturedLog);
+        $this->assertEquals('LOGOUT', $capturedLog->action);
+        $this->assertEquals(1, $capturedLog->user_id);
+        $this->assertEquals('192.168.1.50', $capturedLog->ip_address);
+    }
+
+    public function testLogoutWithoutAuthHeaderStillReturnsSuccess(): void
+    {
+        unset($_SERVER['HTTP_AUTHORIZATION']);
+
+        // No mocks should be called - just return success
+        $response = $this->authController->logout();
+
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertStringContainsString('DISCARD_TOKEN', $response->getBody());
+    }
+
+    public function testLogoutWithInvalidTokenStillReturnsSuccess(): void
+    {
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer invalid.token';
+
+        $this->jwtHandlerMock->method('verifyAndDecode')
+            ->willReturn(null);
+
+        // Should still return success even if token is invalid
+        $response = $this->authController->logout();
+
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertStringContainsString('DISCARD_TOKEN', $response->getBody());
+    }
 }

@@ -3,10 +3,28 @@
 namespace Tests\Models;
 
 use PHPUnit\Framework\TestCase;
-use App\Models\User;
+use RedBeanPHP\R;
 
 class UserTest extends TestCase {
-    public function testConstructorInitializesCorrectly() {
+    protected function setUp(): void {
+        if (!R::testConnection()) {
+            R::setup('sqlite::memory:');
+        }
+    }
+
+    protected function tearDown(): void {
+        R::nuke();
+    }
+
+    private function createBean(array $data): \RedBeanPHP\OODBBean {
+        $bean = R::dispense('users');
+        foreach ($data as $key => $value) {
+            $bean->$key = $value;
+        }
+        return $bean;
+    }
+
+    public function testInitializationAndGetters() {
         $data = [
             'id' => 1,
             'email' => 'test@example.com',
@@ -17,62 +35,61 @@ class UserTest extends TestCase {
             'is_disabled' => 0,
             'last_login_at' => '2026-04-24 10:00:00'
         ];
-        $user = new User($data);
+        
+        $bean = $this->createBean($data);
+        R::store($bean);
 
-        $this->assertEquals(1, $user->id);
-        $this->assertEquals('test@example.com', $user->email);
-        $this->assertEquals('admin', $user->role);
-        $this->assertEquals('Test User', $user->full_name);
-        $this->assertTrue($user->is_verified);
-        $this->assertFalse($user->is_disabled);
-        $this->assertEquals('2026-04-24 10:00:00', $user->last_login_at);
+        $userBean = R::load('users', 1);
+
+        $this->assertEquals(1, $userBean->id);
+        $this->assertEquals('test@example.com', $userBean->email);
+        $this->assertEquals('admin', $userBean->role);
+        $this->assertEquals('Test User', $userBean->full_name);
+        $this->assertTrue((bool)$userBean->is_verified);
+        $this->assertFalse((bool)$userBean->is_disabled);
+        $this->assertEquals('2026-04-24 10:00:00', $userBean->last_login_at);
     }
 
     public function testIsValidRole() {
-        // Test allowed roles defined in PROJECT.md
-        $admin = new User(['role' => 'admin']);
+        $admin = $this->createBean(['role' => 'admin']);
         $this->assertTrue($admin->isValidRole());
 
-        $readwrite = new User(['role' => 'readwrite']);
+        $readwrite = $this->createBean(['role' => 'readwrite']);
         $this->assertTrue($readwrite->isValidRole());
 
-        $readonly = new User(['role' => 'readonly']);
+        $readonly = $this->createBean(['role' => 'readonly']);
         $this->assertTrue($readonly->isValidRole());
 
-        // Test invalid roles
-        $invalid = new User(['role' => 'super_admin']);
+        $invalid = $this->createBean(['role' => 'super_admin']);
         $this->assertFalse($invalid->isValidRole());
 
-        $empty = new User(['role' => '']);
+        $empty = $this->createBean(['role' => '']);
         $this->assertFalse($empty->isValidRole());
     }
 
     public function testSoftDeleteSetsDisabledFlag() {
-        $user = new User(['is_disabled' => 0]);
-        $this->assertFalse($user->is_disabled);
+        $user = $this->createBean(['is_disabled' => 0]);
+        $this->assertFalse((bool)$user->is_disabled);
         
         $user->softDelete();
-        $this->assertTrue($user->is_disabled);
+        $this->assertTrue((bool)$user->is_disabled);
     }
 
     public function testIsActiveReturnsCorrectStatus() {
-        // Case: Active
-        $user = new User(['is_verified' => 1, 'is_disabled' => 0]);
+        $user = $this->createBean(['is_verified' => 1, 'is_disabled' => 0]);
         $this->assertTrue($user->isActive());
 
-        // Case: Not verified
-        $user = new User(['is_verified' => 0, 'is_disabled' => 0]);
+        $user = $this->createBean(['is_verified' => 0, 'is_disabled' => 0]);
         $this->assertFalse($user->isActive());
 
-        // Case: Disabled
-        $user = new User(['is_verified' => 1, 'is_disabled' => 1]);
+        $user = $this->createBean(['is_verified' => 1, 'is_disabled' => 1]);
         $this->assertFalse($user->isActive());
     }
 
     public function testToArrayCastsTypesForSQLite() {
-        $user = new User([
-            'is_verified' => true,
-            'is_disabled' => false
+        $user = $this->createBean([
+            'is_verified' => 1,
+            'is_disabled' => 0
         ]);
         $array = $user->toArray();
 

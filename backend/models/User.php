@@ -2,41 +2,76 @@
 
 namespace App\Models;
 
+use RedBeanPHP\SimpleModel;
+
 /**
  * User Model
  * 
  * Handles user identity, authentication data, and role-based access.
  * Implements soft-delete via the is_disabled flag.
  */
-class User {
-    public ?int $id = null;
-    public string $email;
-    public string $password_hash;
-    public string $role; // admin, readwrite, or readonly
-    public string $full_name;
-    public bool $is_verified = false;
-    public bool $is_disabled = false;
-    public ?string $last_login_at = null;
+class User extends SimpleModel {
+    /**
+     * @return int|null The user ID
+     */
+    public function getId(): ?int {
+        return (int)$this->bean->id;
+    }
 
     /**
-     * @param array $data Associative array of user attributes from the database
+     * @return string The user's email
      */
-    public function __construct(array $data = []) {
-        $this->id = isset($data['id']) ? (int)$data['id'] : null;
-        $this->email = $data['email'] ?? '';
-        $this->password_hash = $data['password_hash'] ?? '';
-        $this->role = $data['role'] ?? 'readonly';
-        $this->full_name = $data['full_name'] ?? '';
-        $this->is_verified = (bool)($data['is_verified'] ?? false);
-        $this->is_disabled = (bool)($data['is_disabled'] ?? false);
-        $this->last_login_at = $data['last_login_at'] ?? null;
+    public function getEmail(): string {
+        return (string)$this->bean->email;
+    }
+
+    /**
+     * @return string The hashed password
+     */
+    public function getPasswordHash(): string {
+        return (string)$this->bean->password_hash;
+    }
+
+    /**
+     * @return string The user's role (admin, readwrite, or readonly)
+     */
+    public function getRole(): string {
+        return (string)$this->bean->role;
+    }
+
+    /**
+     * @return string The user's full name
+     */
+    public function getFullName(): string {
+        return (string)$this->bean->full_name;
+    }
+
+    /**
+     * @return bool Whether the user is verified
+     */
+    public function isVerified(): bool {
+        return (bool)$this->bean->is_verified;
+    }
+
+    /**
+     * @return bool Whether the user is disabled
+     */
+    public function isDisabled(): bool {
+        return (bool)$this->bean->is_disabled;
+    }
+
+    /**
+     * @return string|null The last login timestamp
+     */
+    public function getLastLoginAt(): ?string {
+        return $this->bean->last_login_at;
     }
 
     /**
      * Validates the user's role against allowed values.
      */
     public function isValidRole(): bool {
-        return in_array($this->role, ['admin', 'readwrite', 'readonly']);
+        return in_array($this->bean->role, ['admin', 'readwrite', 'readonly']);
     }
 
     /**
@@ -44,30 +79,30 @@ class User {
      * Instead of removing the row, we set is_disabled to true.
      */
     public function softDelete(): void {
-        $this->is_disabled = true;
+        $this->bean->is_disabled = true;
     }
 
     /**
      * Helper to check if the user is active and verified.
      */
     public function isActive(): bool {
-        return !$this->is_disabled && $this->is_verified;
+        return !$this->bean->is_disabled && $this->bean->is_verified;
     }
 
     /**
-     * Converts the object to an associative array.
+     * Converts the bean to an associative array.
      * Useful for database updates and creating diffs for the AuditLog.
      */
     public function toArray(): array {
         return [
-            'id' => $this->id,
-            'email' => $this->email,
-            'password_hash' => $this->password_hash,
-            'role' => $this->role,
-            'full_name' => $this->full_name,
-            'is_verified' => (int)$this->is_verified,
-            'is_disabled' => (int)$this->is_disabled,
-            'last_login_at' => $this->last_login_at,
+            'id' => (int)$this->bean->id,
+            'email' => $this->bean->email,
+            'password_hash' => $this->bean->password_hash,
+            'role' => $this->bean->role,
+            'full_name' => $this->bean->full_name,
+            'is_verified' => (int)$this->bean->is_verified,
+            'is_disabled' => (int)$this->bean->is_disabled,
+            'last_login_at' => $this->bean->last_login_at,
         ];
     }
 }

@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Repositories\UserRepository;
 use App\Repositories\AuditLogRepository;
+use App\Repositories\BlacklistRepository;
 use App\Utils\Response;
 use App\Utils\JwtHandler;
 use RedBeanPHP\OODBBean;
@@ -18,12 +19,17 @@ class AuthController
 {
   private UserRepository $userRepository;
   private AuditLogRepository $auditLogRepository;
+  private BlacklistRepository $blacklistRepository;
   private JwtHandler $jwtHandler;
 
-  public function __construct(UserRepository $userRepository, AuditLogRepository $auditLogRepository)
-  {
+  public function __construct(
+    UserRepository $userRepository,
+    AuditLogRepository $auditLogRepository,
+    BlacklistRepository $blacklistRepository
+  ) {
     $this->userRepository = $userRepository;
     $this->auditLogRepository = $auditLogRepository;
+    $this->blacklistRepository = $blacklistRepository;
     $authConfig = require __DIR__ . '/../config/auth.php';
     $this->jwtHandler = new JwtHandler($authConfig);
   }
@@ -58,10 +64,13 @@ class AuthController
       return Response::json(['error' => 'Invalid email or password'], 401);
     }
 
+    // Cleanup expired tokens on login (handles abandoned sessions)
+    $this->blacklistRepository->cleanup();
+
     $token = $this->jwtHandler->generate($user);
     $this->logAuthSuccess($user);
 
-    $user->last_login_at = date('Y-m-d H:i:s');
+    $user->last_login_at = gmdate('Y-m-d H:i:s');
     $this->userRepository->update($user);
 
     return Response::json([
@@ -76,11 +85,32 @@ class AuthController
   }
 
   /**
-   * Handles logout.
+   * Handles logout with token blacklisting.
+   *
+   * Extracts token from Authorization header, adds to blacklist,
+   * cleans up expired tokens, and logs the logout event.
    */
   public function logout(): Response
   {
-    $this->invalidateServerSideSession();
+    $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+
+    if (str_starts_with($authHeader, 'Bearer ')) {
+      $token = substr($authHeader, 7);
+      $payload = $this->jwtHandler->verifyAndDecode($token);
+
+      if ($payload) {
+        // Add token to blacklist until its original expiry (UTC)
+        $expiresAt = gmdate('Y-m-d H:i:s', $payload['exp']);
+        $tokenHash = hash('sha256', $token);
+        $this->blacklistRepository->add($tokenHash, $expiresAt);
+
+        // Cleanup expired tokens
+        $this->blacklistRepository->cleanup();
+
+        // Log the logout event
+        $this->logLogout($payload['sub']);
+      }
+    }
 
     return Response::json([
       'message' => 'Successfully logged out',
@@ -98,7 +128,7 @@ class AuthController
     $log->action = 'FAILED_LOGIN';
     $log->old_values = $payload;
     $log->new_values = $payload;
-    $log->timestamp = date('Y-m-d H:i:s');
+    $log->timestamp = gmdate('Y-m-d H:i:s');
     $log->ip_address = $_SERVER['REMOTE_ADDR'];
 
     $this->auditLogRepository->save($log);
@@ -110,7 +140,7 @@ class AuthController
     $log->action = 'LOGIN';
     $log->user_id = (int) $user->id;
     $log->new_values = json_encode(['email' => (string) $user->email]);
-    $log->timestamp = date('Y-m-d H:i:s');
+    $log->timestamp = gmdate('Y-m-d H:i:s');
     $log->ip_address = $_SERVER['REMOTE_ADDR'];
 
     // NOTE: table_name and record_id are intentionally left null for LOGIN events.
@@ -125,5 +155,19 @@ class AuthController
   private function invalidateServerSideSession(): void
   {
     // Placeholder for blacklist logic
+  }
+
+  /**
+   * Logs a successful logout event.
+   */
+  private function logLogout(int $userId): void
+  {
+    $log = R::dispense('audit_log');
+    $log->action = 'LOGOUT';
+    $log->user_id = $userId;
+    $log->timestamp = gmdate('Y-m-d H:i:s');
+    $log->ip_address = $_SERVER['REMOTE_ADDR'];
+
+    $this->auditLogRepository->save($log);
   }
 }

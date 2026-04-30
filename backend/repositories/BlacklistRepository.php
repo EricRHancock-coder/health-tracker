@@ -33,9 +33,10 @@ class BlacklistRepository
 
     /**
      * Remove expired tokens. Returns the number of rows removed.
+     * Uses UTC for comparison to match stored format.
      */
     public function cleanup(): int
     {
-        return (int) R::exec('DELETE FROM token_blacklist WHERE expires_at < CURRENT_TIMESTAMP');
+        return (int) R::exec("DELETE FROM token_blacklist WHERE expires_at < datetime('now')");
     }
 }

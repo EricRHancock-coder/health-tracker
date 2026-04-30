@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 use App\Middleware\AuthMiddleware;
 use App\Utils\JwtHandler;
 use App\Repositories\UserRepository;
+use App\Repositories\BlacklistRepository;
 use App\Utils\Response;
 use Exception;
 use RedBeanPHP\OODBBean;
@@ -15,6 +16,7 @@ class AuthMiddlewareTest extends TestCase
 {
     private $jwtHandlerMock;
     private $userRepositoryMock;
+    private $blacklistRepositoryMock;
     private $authMiddleware;
 
     protected function setUp(): void
@@ -25,10 +27,12 @@ class AuthMiddlewareTest extends TestCase
 
         $this->jwtHandlerMock = $this->createMock(JwtHandler::class);
         $this->userRepositoryMock = $this->createMock(UserRepository::class);
+        $this->blacklistRepositoryMock = $this->createMock(BlacklistRepository::class);
 
         $this->authMiddleware = new AuthMiddleware(
             $this->jwtHandlerMock,
-            $this->userRepositoryMock
+            $this->userRepositoryMock,
+            $this->blacklistRepositoryMock
         );
     }
 
@@ -202,5 +206,20 @@ class AuthMiddlewareTest extends TestCase
         $this->assertInstanceOf(Response::class, $result);
         $this->assertEquals(401, $result->getStatusCode());
         $this->assertEquals('Authentication failed', $result->toArray()['error']);
+    }
+
+    public function testHandleBlacklistedToken(): void
+    {
+        $this->setAuthHeader('Bearer blacklisted.token');
+
+        $this->blacklistRepositoryMock->method('isBlacklisted')
+            ->willReturn(true);
+
+        $requestContext = [];
+        $result = $this->authMiddleware->handle($requestContext);
+
+        $this->assertInstanceOf(Response::class, $result);
+        $this->assertEquals(401, $result->getStatusCode());
+        $this->assertEquals('Token has been revoked', $result->toArray()['error']);
     }
 }

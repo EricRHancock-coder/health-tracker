@@ -4,24 +4,31 @@ namespace App\Middleware;
 
 use App\Utils\JwtHandler;
 use App\Repositories\UserRepository;
+use App\Repositories\BlacklistRepository;
 use App\Utils\Response;
 use Exception;
 
 /**
  * AuthMiddleware
- * 
+ *
  * Validates JWT tokens and ensures the authenticated user is active and verified.
+ * Checks token blacklist to revoke logged-out tokens.
  * Injects the authenticated User object into the request context.
  */
 class AuthMiddleware
 {
   private JwtHandler $jwtHandler;
   private UserRepository $userRepository;
+  private BlacklistRepository $blacklistRepository;
 
-  public function __construct(JwtHandler $jwtHandler, UserRepository $userRepository)
-  {
+  public function __construct(
+    JwtHandler $jwtHandler,
+    UserRepository $userRepository,
+    BlacklistRepository $blacklistRepository
+  ) {
     $this->jwtHandler = $jwtHandler;
     $this->userRepository = $userRepository;
+    $this->blacklistRepository = $blacklistRepository;
   }
 
   /**
@@ -41,7 +48,13 @@ class AuthMiddleware
 
       $token = substr($authHeader, 7);
 
-      // 1. Validate Token & Extract Payload
+      // 1. Check if token is blacklisted (revoked)
+      $tokenHash = hash('sha256', $token);
+      if ($this->blacklistRepository->isBlacklisted($tokenHash)) {
+        return Response::error('Token has been revoked', 401);
+      }
+
+      // 2. Validate Token & Extract Payload
       $payload = $this->jwtHandler->verifyAndDecode($token);
 
       if (!$payload || !isset($payload['sub'])) {

@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 use App\Controllers\AuthController;
 use App\Repositories\UserRepository;
 use App\Repositories\AuditLogRepository;
+use App\Repositories\BlacklistRepository;
 use App\Utils\JwtHandler;
 use RedBeanPHP\OODBBean;
 use RedBeanPHP\R;
@@ -14,6 +15,7 @@ class AuthControllerTest extends TestCase
 {
     private $userRepositoryMock;
     private $auditRepositoryMock;
+    private $blacklistRepositoryMock;
     private $jwtHandlerMock;
     private AuthController $authController;
 
@@ -25,11 +27,13 @@ class AuthControllerTest extends TestCase
 
         $this->userRepositoryMock = $this->createMock(UserRepository::class);
         $this->auditRepositoryMock = $this->createMock(AuditLogRepository::class);
+        $this->blacklistRepositoryMock = $this->createMock(BlacklistRepository::class);
         $this->jwtHandlerMock = $this->createMock(JwtHandler::class);
 
         $this->authController = new AuthController(
             $this->userRepositoryMock,
-            $this->auditRepositoryMock
+            $this->auditRepositoryMock,
+            $this->blacklistRepositoryMock
         );
 
         // The controller instantiates its own JwtHandler in the constructor; swap
@@ -65,6 +69,9 @@ class AuthControllerTest extends TestCase
             'is_disabled' => 0,
             'is_verified' => 1,
         ]);
+
+        $this->blacklistRepositoryMock->expects($this->once())
+            ->method('cleanup');
 
         $this->userRepositoryMock->expects($this->once())
             ->method('findByEmail')
@@ -104,6 +111,8 @@ class AuthControllerTest extends TestCase
             'is_verified' => 1,
         ]);
 
+        $this->blacklistRepositoryMock->method('cleanup');
+
         $this->userRepositoryMock->expects($this->once())
             ->method('findByEmail')
             ->willReturn($user);
@@ -133,6 +142,8 @@ class AuthControllerTest extends TestCase
     {
         $userData = ['email' => 'nonexistent@test.com', 'password' => 'any_password'];
 
+        $this->blacklistRepositoryMock->method('cleanup');
+
         $this->userRepositoryMock->method('findByEmail')->willReturn(null);
 
         $this->auditRepositoryMock->expects($this->once())
@@ -149,6 +160,8 @@ class AuthControllerTest extends TestCase
     {
         $capturedLog = null;
         $userData = ['email' => 'nonexistent@test.com', 'password' => 'any_password'];
+
+        $this->blacklistRepositoryMock->method('cleanup');
 
         $this->userRepositoryMock->method('findByEmail')->willReturn(null);
 
@@ -180,6 +193,8 @@ class AuthControllerTest extends TestCase
             'is_disabled' => 0,
         ]);
 
+        $this->blacklistRepositoryMock->method('cleanup');
+
         $this->userRepositoryMock->method('findByEmail')->willReturn($user);
 
         $this->auditRepositoryMock->expects($this->once())
@@ -202,6 +217,8 @@ class AuthControllerTest extends TestCase
             'is_disabled' => 1,
         ]);
 
+        $this->blacklistRepositoryMock->method('cleanup');
+
         $this->userRepositoryMock->method('findByEmail')->willReturn($user);
 
         $this->auditRepositoryMock->expects($this->once())
@@ -216,6 +233,8 @@ class AuthControllerTest extends TestCase
 
     public function testLoginMissingCredentialsReturnsGenericError(): void
     {
+        $this->blacklistRepositoryMock->method('cleanup');
+
         $this->auditRepositoryMock->expects($this->once())
             ->method('save')
             ->with($this->callback(fn($log) => $log->action === 'FAILED_LOGIN'));

@@ -113,6 +113,12 @@ class AuthController
     $log->timestamp = date('Y-m-d H:i:s');
     $log->ip_address = $_SERVER['REMOTE_ADDR'];
 
+    // NOTE: table_name and record_id are intentionally left null for LOGIN events.
+    // These fields track data modifications (CRUD operations). LOGIN is an authentication
+    // event that doesn't modify any database record. The user_id field already identifies
+    // who performed the action. CRUD operations on users/residents should populate
+    // table_name and record_id to indicate what was modified.
+
     $this->auditLogRepository->save($log);
   }
 
